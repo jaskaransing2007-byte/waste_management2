@@ -12,9 +12,10 @@ from PIL import Image
 import google.generativeai as genai
 
 # --- CONFIGURATION ---
-UPLOAD_FOLDER = 'uploads'
-MODEL_FOLDER = 'model'
-DATABASE = 'waste_management.db'
+# Use /tmp for Vercel/Serverless environments as the root is read-only
+IS_VERCEL = "VERCEL" in os.environ
+UPLOAD_FOLDER = '/tmp/uploads' if IS_VERCEL else 'uploads'
+DATABASE = '/tmp/waste_management.db' if IS_VERCEL else 'waste_management.db'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
 
 # Get Gemini API Key from environment or placeholder
