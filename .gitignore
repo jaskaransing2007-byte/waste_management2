@@ -1,0 +1,7 @@
+waste_management.db
+uploads/
+model/
+__pycache__/
+*.pyc
+.env
+.vercel
