@@ -18,8 +18,12 @@ UPLOAD_FOLDER = '/tmp/uploads' if IS_VERCEL else 'uploads'
 DATABASE = '/tmp/waste_management.db' if IS_VERCEL else 'waste_management.db'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
 
-# Get Gemini API Key from environment or placeholder
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "YOUR_API_KEY_HERE")
+# Load local .env if it exists
+from dotenv import load_dotenv
+load_dotenv()
+
+# Get Gemini API Key from environment
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
@@ -61,17 +65,20 @@ def predict_image(img_path):
         3. Hazardous Waste (Batteries, electronics, chemicals, medical waste)
         4. Dry Waste (Non-recyclable paper, dust, cloth, other dry non-recyclables)
 
+        Also provide a very short one-sentence explanation of why it belongs there.
+
         Return only a JSON object with this exact structure:
         {
           "category": "Category Name",
           "detected_item": "Specific name of the item",
-          "confidence": 0.95
+          "confidence": 0.95,
+          "explanation": "Brief reasoning here"
         }
         """
         
         response = model.generate_content([prompt, img])
         
-        # Parse response (Gemini sometimes adds markdown backticks)
+        # Parse response
         import json
         text_response = response.text.replace('```json', '').replace('```', '').strip()
         data = json.loads(text_response)
@@ -79,11 +86,12 @@ def predict_image(img_path):
         category = data.get("category", "Dry Waste")
         confidence = float(data.get("confidence", 0.90))
         raw_label = data.get("detected_item", "Unknown")
+        explanation = data.get("explanation", "")
         
-        return category, confidence, raw_label
+        return category, confidence, raw_label, explanation
     except Exception as e:
         print(f"Prediction error: {e}")
-        return "Dry Waste", 0.5, f"Error: {str(e)}"
+        return "Dry Waste", 0.5, "Error", str(e)
 
 # --- FRONTEND TEMPLATE ---
 BASE_HTML = """
@@ -381,6 +389,11 @@ BASE_HTML = """
                     <div class="confidence-bar" id="confidence-bar"></div>
                 </div>
 
+                <div id="explanation-box" style="margin-top: 1.5rem; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); display: none;">
+                    <p style="font-size: 0.8rem; color: var(--primary); font-weight: 600; margin-bottom: 0.3rem;">💡 Why this category?</p>
+                    <p id="explanation-text" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;"></p>
+                </div>
+
                 <div id="feedback-section" style="margin-top: 1.5rem; text-align: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Was this prediction accurate?</p>
                     <div style="display: flex; gap: 10px; justify-content: center;">
@@ -467,6 +480,11 @@ BASE_HTML = """
                     
                     document.getElementById('confidence-bar').style.width = (result.confidence * 100) + '%';
                     
+                    if (result.explanation) {
+                        document.getElementById('explanation-text').innerText = result.explanation;
+                        document.getElementById('explanation-box').style.display = 'block';
+                    }
+                    
                     resultSection.style.display = 'block';
                     loadHistory();
                 } else {
@@ -527,7 +545,7 @@ def predict():
         file.save(filepath)
 
         # ML Prediction
-        prediction, confidence, raw_label = predict_image(filepath)
+        prediction, confidence, raw_label, explanation = predict_image(filepath)
         
         if prediction:
             # Save to DB
@@ -544,6 +562,7 @@ def predict():
                 'prediction': prediction,
                 'confidence': confidence,
                 'raw_label': raw_label,
+                'explanation': explanation,
                 'timestamp': timestamp
             })
         else:
